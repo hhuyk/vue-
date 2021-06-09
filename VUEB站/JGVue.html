@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <div id="root">
+        <div>{{msg}}</div>
+        <ul>
+            <li>li1</li>
+            <li>li2</li>
+            <li>li3</li>
+        </ul>
+    </div>
+    <script>
+        //  虚拟DOM
+        class VNode {
+            constructor(tag, data, value, type, elm) {
+                this.tag = tag && tag.toLowerCase()
+                this.data = data
+                this.value = value
+                this.type = type
+                this.children = []
+            }
+
+
+            appendChild(VNode) {
+                this.children.push(VNode)
+            }
+        }
+        function getVNode(node) {
+            let nodeType = node.nodeType
+            let _vnode = null
+            if (nodeType === 1) {
+                // 元素
+                let nodeName = node.nodeName
+                let attrs = node.attributes
+                let _attrObj = {}
+                Array.from(attrs).forEach(attr => {
+                    _attrObj[attr.nodeName] = attr.nodeValue
+                })
+                _vnode = new VNode(nodeName, _attrObj, undefined, nodeType)
+
+                // 考虑node的子元素
+                let childNodes = node.childNodes
+                Array.from(childNodes).forEach(node => {
+                    _vnode.appendChild(getVNode(node)) //递归
+                })
+            } else if (nodeType === 3) {
+                _vnode = new VNode(undefined, undefined, node.nodeValue, nodeType)
+            }
+            return _vnode
+        }
+        let rkuohao = /\{\{(.+?)\}\}/g
+        // 根据路径访问对象成员
+        function createGetValueByPath(path) {
+            let paths = path.split('.')
+            return function getValueByPath(obj) {
+                let res = obj
+                let prop
+                while (prop = paths.shift()) {
+                    res = res[prop]
+                }
+                return res
+            }
+        }
+        // 将带有坑的Vnode 与数据 data 相结合，得到填充数据的Vnode
+        function combine(vnode, data) {
+            let { type, data:_data, value, tag, children } = vnode
+            let _vnode = null
+            if (type === 3) {
+                value = value.replace(rkuohao, function(_,g){
+                  return createGetValueByPath(g.trim())(data)
+                })
+                _vnode = new VNode(tag, _data,value,type)
+            } else if (type === 1) {
+                _vnode = new VNode(tag, _data, value, type)
+                children.forEach(sub => _vnode.appendChild(combine(sub,data)))
+            }
+            return _vnode
+        }
+
+        function parseVNode(VNode) {
+            // 将VNode转化为dom
+            let _dom = null
+            let type = VNode.type
+            if (type === 3) {
+                return document.createTextNode(VNode.value);
+            } else {
+                _dom = document.createElement(VNode.tag)
+                Object.keys(VNode.data || {}).forEach(key => {
+                    _dom.setAttribute(key, VNode.data[key])
+                })
+                VNode.children.forEach(node => {
+                    _dom.appendChild(parseVNode(node))
+                })
+                return _dom
+            }
+        }
+        function JGVue(options) {
+            this._data = options.data
+            this._template = document.querySelector(options.el)
+
+
+            this.mount() // 挂载
+        }
+
+        JGVue.prototype.mount = function () {
+            // 需要提供一个render方法  生成虚拟dom
+            this.render = this.createRenderFn()
+
+            this.mountComponent()
+        }
+
+        JGVue.prototype.mountComponent = function () {
+            let mount = () => {
+                this.update(this.render())
+            }
+
+            mount.call(this)
+        }
+
+        // 真正的VUE中使用了二次提交的设计结构
+        // 在页面中的dom和虚拟DOM是一一对应的关系
+        // 先有AST 和数据生成 VNode
+        // 将旧的VNode 和新的 VNode 比较（diff）,更新
+        // 生成render函数，缓存抽象语法树
+        JGVue.prototype.createRenderFn = function () {
+            let ast = getVNode(this._template)
+            // 将AST + data =》VNode
+            return function render() {
+                // 将带坑的VNode 转化为带数据的
+                let _tmp = combine(ast, this._data)
+                return _tmp
+            }
+        }
+
+        // 虚拟DOM渲染到页面中,这里使用了diff算法
+        JGVue.prototype.update = function () { 
+            // 简化  直接生成 HTMLdom  replaceChild
+        }
+
+
+        let app = new JGVue({
+            el:'#root',
+            data:{
+                msg:'hello JGVUE'
+            }
+        })
+    </script>
+</body>
+
+</html>

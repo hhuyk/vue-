@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>myVUE</title>
+</head>
+
+<body>
+  <div id="root" class="classT">
+    <div class="class1">
+      {{name}} -- {{nameObj.firstName}}
+      <p class="classp">{{name}} -- {{message}}</p>
+      <ul>
+        <li>title1</li>
+        <li>title2</li>
+        <li>title3</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+
+    const rgx = /\{\{(.+?)\}\}/g
+
+    // 柯里化函数  缓存一些内容，减少解析
+    function createGetValueByPath(path) {
+      let paths = path.split('.')
+      return function getValueByPath(obj) {
+        let res = obj
+        let prop
+        while (prop = paths.shift()) {
+          res = res[prop]
+        }
+        return res
+      }
+    }
+
+
+    function JGVue(options = {}) {
+      this._data = options.data
+      this._el = options.el
+
+      this.$el = this._templateDom = document.querySelector(this._el)
+
+      this._parent = this._templateDom.parentNode
+
+      // 渲染
+      this.render()
+    }
+
+    // 模板结合数据
+    JGVue.prototype.render = function () {
+      this.compiler()
+    }
+
+    JGVue.prototype.compiler = function (tmpNode) {
+      let realHTMLDOM = this._templateDom.cloneNode(true)
+      compiler(realHTMLDOM, this._data)
+      this.update(realHTMLDOM)
+    }
+
+    JGVue.prototype.update = function (real) {
+      this._parent.replaceChild(real, this.$el)
+    }
+
+    function compiler(template, data) {
+      let childNodes = template.childNodes
+      Array.from(childNodes).forEach(node => {
+        let type = node.nodeType
+        if (type === 3) {
+          let txt = node.nodeValue
+          txt = txt.replace(rgx, function (_, g) {
+            let key = g.trim()
+            let value = createGetValueByPath(key)(data)
+            return value
+          })
+          node.nodeValue = txt
+        } else if (type === 1) {
+          compiler(node, data)
+        }
+      })
+    }
+    let app = new JGVue({
+      el: '#root',
+      data: {
+        name: 'jim',
+        message: 'info',
+        nameObj: {
+          firstName: 'yu',
+          lastName: 'k'
+        }
+      }
+    })
+
+
+    // 怎么将真正的DOM转换为虚拟DOM
+    // 怎么将虚拟DOM转换为真正的DOM
+
+    // 虚拟DOM的描述
+    // <div><div /></div> = > { tag:'div', children:[ { tag:'div'}]}
+
+    class VNode {
+      constructor(tag, data, value, type, elm) {
+        this.tag = tag && tag.toLowerCase()
+        this.data = data
+        this.value = value
+        this.type = type
+        this.children = []
+      }
+
+      appendChild(VNode) {
+        this.children.push(VNode)
+      }
+    }
+
+    /**
+     *  使用递归遍历DOM，生成虚拟DOM
+     * VUE中的源码使用的栈结构，使用栈存储父元素实现递归生成
+     */
+    function getVNode(node) {
+      let nodeType = node.nodeType
+      let _vnode = null
+      if (nodeType === 1) {
+        // 元素
+        let nodeName = node.nodeName
+        let attrs = node.attributes
+        let _attrObj = {}
+        Array.from(attrs).forEach(attr => {
+          _attrObj[attr.nodeName] = attr.nodeValue
+        })
+        _vnode = new VNode(nodeName, _attrObj, undefined, nodeType)
+
+        // 考虑node的子元素
+        let childNodes = node.childNodes
+        Array.from(childNodes).forEach(node => {
+          _vnode.appendChild(getVNode(node)) //递归
+        })
+      } else if (nodeType === 3) {
+        _vnode = new VNode(undefined, undefined, node.nodeValue, nodeType)
+      }
+      return _vnode
+    }
+
+    function parseVNode(VNode) {
+      // 将VNode转化为dom
+      let _dom = null
+      let type = VNode.type
+      if (type === 3) {
+        return document.createTextNode(VNode.value);
+      } else {
+        _dom = document.createElement(VNode.tag)
+        Object.keys(VNode.data || {}).forEach(key => {
+          _dom.setAttribute(key, VNode.data[key])
+        })
+        VNode.children.forEach(node => {
+          _dom.appendChild(parseVNode(node))
+        })
+        return _dom
+      }
+    }
+
+  </script>
+
+</body>
+
+</html>
